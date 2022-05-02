@@ -1,5 +1,5 @@
 # For the more specific report
-See [blog posting here]()
+See [blog posting here](https://velog.io/@717lumos/PyTorch-PyTorch%EB%A1%9C-Image-Classifier-%EB%A7%8C%EB%93%A4%EA%B8%B0-LeNet-5-%EB%AA%A8%EB%8D%B8-%EA%B0%9C%EC%84%A0-FashionMNIST-%EB%8D%B0%EC%9D%B4%ED%84%B0%EC%85%8B-%EB%B6%84%EB%A5%98)
 
 - - -
 
@@ -130,42 +130,6 @@ RuntimeError: Calculated padded input size per channel: (4 x 4). Kernel size: (5
 
 이는 모델의 Layer을 고려하지 않아 발생한 문제이다. 에러 메시지를 보면 한 채널의 입력 크기는 (4x4)인데 커널 크기가 그보다 더 큰 (5x5)라 하고 있다.
 
-## Analysis
-더 자세한 문제 분석을 위해 기존 모델과 조정하고 싶은 모델을 비교해보았다.
-
-먼저, 기존 모델의 경우이다.
-
-합성곱층을 거치면 정사각 이미지 한 변(Width의 W라 하자)의 크기가 $ {(W - K + 2P) / S} + 1 $ 가 된다. LeNet-5에서 모든 합성곱층에서는 커널 크기(K)=5, 패딩 크기(P)=0, 스트라이드(S)=1로 동일하므로, 한 번의 합성곱층을 거치면 입력 크기보다 한 변이 4씩 줄어든다.
-
-풀링층은 K=2, S=2이므로 한 번 거치면 변의 크기가 절반이 된다. 채널의 개수를 제외하고 이미지의 크기만 고려해보면 아래의 과정으로 크기가 변화한다.
-
-```
-32 --[ conv0 ]--> 28
-   --[ pool0 ]--> 14
-   --[ conv1 ]--> 10 
-   --[ pool1 ]--> 5 
-   --[ conv2 ]--> 1
-```
-
-따라서 conv2까지 거치면 채널은 120개, 크기는 1 X 1이 되고, 이를 완전연결계층으로 넘긴다.
-
-```
-120 --[ fc3 ]--> 84
-    --[ fc4 ]--> 10
-```
-
-반면 Fashion MNIST의 크기처럼 Transform을 하고 싶은 경우에는 단순히 입력 크기를 28 x 28로 변경했을 때 아래와 같은 흐름을 보인다.
-
-```
-28 --[ conv0 ]--> 24
-   --[ pool0 ]--> 12
-   --[ conv1 ]--> 8
-   --[ pool1 ]--> 4 
-   --[ conv2 ]--> 0
-   ```
-
-출력 크기 계산식만으로 보면 conv2까지 거치면 크기가 0이 된다. 그도 그럴 것이, conv2 층 바로 직전 크기가 (4, 4)인데 커널은 (5, 5)에 패딩도 없다. 커널 크기보다 입력 크기가 작기 때문에 연산이 불가능하다. 에러 메시지도 그 내용을 담고 있었다.
-
 ## Problem Solving
 따라서 레이어의 변경을 추가했다. 커널 사이즈를 5에서 3으로 줄이고 마지막 합성곱층 직후 풀링층 하나를 더 추가했다.(`2 --[ pool2 ] --> 1`) 그러면 아래와 같은 흐름을 보이고, 에러가 발생하지 않는다.
 
@@ -181,29 +145,6 @@ RuntimeError: Calculated padded input size per channel: (4 x 4). Kernel size: (5
 또는 패딩을 2로 주어도 에러가 나지 않는다.
 
 ## Sevaral Cases
-* when using optimizer **SGD**: `lr`=0.01, `weight_decay`=0
-* when using optimizer **Adam**: `lr`=1e-3, `weight_decay`=1e-5
-* when using activation func. **LeakyReLU**: `negative_slope`=0.1
-
-💻 optimizer = SGD일 때
-
-| no. | momentum | Dropout p | Activation Fun. | loss | eval. accuracy |
-|:---:|:--------:|:---------:|:---------------:|:----:|:--------------:|
-| 1 | 0.9 | 0.1 | LeakyReLU | 1.721 | 시도 안함 |
-| 2 | 0.9 | 0.3 | LeakyReLU | 1.628 | 시도 안함 |
-| 3 | 0.9 | 0.5 | LeakyReLU | 1.664 | 시도 안함 |
-| 4 | 0.9 | 0.5 | tanh | 1.668 | 시도 안함 |
-| 5 | 0.9 | 0.3 | tanh | 1.613 | 85.53 % |
-| 6 | 0.5 | 0.1 | tanh | 1.616 | 85.33 % |
-
-💻 optimizer = Adam일 때
-
-| no. | Dropout p | Activation Fun. | loss | eval. accuracy |
-|:---:|:---------:|:---------------:|:----:|:--------------:|
-| 7 | 0.1 | tanh | 1.621 | 84.29 % |
-| 8 | 0.5 | tanh | 1.632 | 84.60 % |
-| 9 | 0.5 | LeakyReLU | 1.632 | 84.89 % |
-
 ![](readme_imgs/losses_assign.png)
 
 > 지금은 grayscale의 작은 이미지이기 때문에 하이퍼 파라미터를 변경해도 큰 성능 변동이 없을 수 있다.
